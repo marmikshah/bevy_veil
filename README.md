@@ -5,6 +5,10 @@ bug — **stacked popups leak input** — and folds away the `children!` /
 `SpawnWith` boilerplate while it's there. No retained widget framework, no
 layout engine: it emits ordinary `bevy_ui` nodes.
 
+> **Status: experimental (0.1, pre-release).** Built to be dogfooded across
+> several games before it hits crates.io; the API will move. Consume via a path
+> or git dependency for now.
+
 ## The bug it kills
 
 Spawn a small popup over a larger one in raw `bevy_ui` and the larger popup's
@@ -83,6 +87,33 @@ cargo run --example stacked
 
 Two stacked overlays; the spinning sprite freezes while either is open.
 
+## Building overlays
+
+Two tiers, pick per screen:
+
+- **Built-in panel** — `overlay(c, id).title(..).body(..).button(label, on_click)`.
+  veil builds the panel; good for simple dialogs.
+- **Bespoke content** — `overlay(c, id).content(|parent| { /* your bevy_ui */ })`.
+  veil owns the (scrimmed, stacked, gated) root; you fill it. For settings
+  grids, icon rows, anything veil shouldn't try to model.
+
+Lifecycle is yours to choose:
+
+- **veil-driven** — `.dismissable(true)` (scrim tap) and/or `.escape(true)`
+  (Esc) pop the overlay.
+- **state-driven** — spawn on `OnEnter`, despawn the `Overlay` on `OnExit`;
+  leave dismiss/escape **off** so the state machine stays authoritative.
+
+## Limitations / roadmap
+
+- **No focus trap or directional (keyboard/gamepad) nav yet.** Touch/mouse
+  only. This is the main gap for full accessibility and is the next planned
+  addition.
+- Built-in panel is intentionally minimal (title / body / buttons). Richer
+  layouts go through `.content()` — by design, not omission.
+- No `dismiss_by_id` helper yet; despawn the `Overlay` entity directly.
+
 ## License
 
-MIT OR Apache-2.0.
+Licensed under either of [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT) at
+your option.
