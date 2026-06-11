@@ -15,6 +15,9 @@ pub(crate) const Z_STEP: i32 = 10;
 #[derive(Component, Debug, Clone)]
 pub struct Overlay {
     pub id: String,
+    /// Whether Escape pops this overlay while it's on top (see the builder's
+    /// `escape`). Off for state-driven overlays.
+    pub pop_on_escape: bool,
 }
 
 /// The live stack of overlay root entities, bottom-to-top. The builder pushes;
@@ -71,14 +74,18 @@ pub(crate) fn prune_despawned_overlays(
 }
 
 /// Desktop affordance: Escape pops only the top overlay (a stack, not a
-/// blanket close). Touch builds dismiss via the scrim tap instead.
+/// blanket close), and only if that overlay opted in via `escape(true)`. Touch
+/// builds dismiss via the scrim tap instead.
 pub(crate) fn escape_pops_top(
     keys: Res<ButtonInput<KeyCode>>,
     stack: Res<OverlayStack>,
+    overlays: Query<&Overlay>,
     mut commands: Commands,
 ) {
     if keys.just_pressed(KeyCode::Escape)
         && let Some(top) = stack.top()
+        && let Ok(overlay) = overlays.get(top)
+        && overlay.pop_on_escape
     {
         commands.entity(top).despawn();
     }

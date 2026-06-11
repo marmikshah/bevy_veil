@@ -17,6 +17,11 @@ use crate::theme::Theme;
 /// ..)` reaches any resource or state from inside it.
 type ButtonCb = Box<dyn FnMut(&mut Commands) + Send + Sync>;
 
+/// Fills the overlay root with caller-owned children (a bespoke panel + its
+/// content) instead of the built-in title/body/button panel. The escape hatch
+/// for screens veil shouldn't try to model — settings grids, icon rows.
+type ContentFn = Box<dyn FnOnce(&mut ChildSpawner) + Send + Sync>;
+
 #[derive(Component, Clone, Copy)]
 pub(crate) struct VeilButtonStyle {
     accent: Color,
@@ -44,6 +49,8 @@ pub fn overlay<'a, 'w, 's>(
             body: Vec::new(),
             buttons: Vec::new(),
             dismissable: false,
+            pop_on_escape: false,
+            content: None,
         },
     }
 }
@@ -84,6 +91,23 @@ impl<'a, 'w, 's> OverlayBuilder<'a, 'w, 's> {
         self
     }
 
+    /// When true, the Escape key pops this overlay while it's on top. Default
+    /// off: state-driven overlays (spawned on `OnEnter`, despawned on `OnExit`)
+    /// must leave this off, or Escape despawns the root behind the state
+    /// machine's back and desyncs it.
+    pub fn escape(mut self, yes: bool) -> Self {
+        self.spec.pop_on_escape = yes;
+        self
+    }
+
+    /// Host caller-owned children instead of the built-in panel. When set,
+    /// `title`/`body`/`button` are ignored — the closure owns everything under
+    /// the (still scrimmed, stacked, gated) root. Use this for bespoke screens.
+    pub fn content(mut self, fill: impl FnOnce(&mut ChildSpawner) + Send + Sync + 'static) -> Self {
+        self.spec.content = Some(Box::new(fill));
+        self
+    }
+
     /// Queue the spawn. Nothing happens until command application.
     pub fn push(self) {
         self.commands.queue(self.spec);
@@ -99,6 +123,8 @@ struct SpawnOverlay {
     body: Vec<String>,
     buttons: Vec<(String, ButtonCb)>,
     dismissable: bool,
+    pop_on_escape: bool,
+    content: Option<ContentFn>,
 }
 
 impl Command for SpawnOverlay {
@@ -108,7 +134,10 @@ impl Command for SpawnOverlay {
 
         let root = world
             .spawn((
-                Overlay { id: self.id },
+                Overlay {
+                    id: self.id,
+                    pop_on_escape: self.pop_on_escape,
+                },
                 Node {
                     position_type: PositionType::Absolute,
                     top: Val::Px(0.0),
@@ -134,6 +163,12 @@ impl Command for SpawnOverlay {
                 .observe(move |_: On<Pointer<Click>>, mut commands: Commands| {
                     commands.entity(root).despawn();
                 });
+        }
+
+        // Bespoke content owns the whole root; the built-in panel is skipped.
+        if let Some(content) = self.content {
+            world.entity_mut(root).with_children(content);
+            return;
         }
 
         let panel = world

@@ -52,8 +52,10 @@ fn open_first(mut commands: Commands) {
                     });
                 })
                 .dismissable(true)
+                .escape(true)
                 .push();
         })
+        .escape(true)
         .push();
 }
 
