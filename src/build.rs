@@ -9,7 +9,7 @@ use bevy::picking::prelude::*;
 use bevy::prelude::*;
 
 use crate::scrim::scrim_bundle;
-use crate::stack::{Overlay, Z_BASE, Z_STEP, push_root};
+use crate::stack::{Overlay, OverlayStack, Z_BASE, Z_STEP, push_root};
 use crate::theme::Theme;
 
 /// A button's click handler. Boxed `FnMut` so the builder stays non-generic;
@@ -51,6 +51,7 @@ pub fn overlay<'a, 'w, 's>(
             dismissable: false,
             pop_on_escape: false,
             content: None,
+            unique: false,
         },
     }
 }
@@ -112,6 +113,16 @@ impl<'a, 'w, 's> OverlayBuilder<'a, 'w, 's> {
     pub fn push(self) {
         self.commands.queue(self.spec);
     }
+
+    /// Queue the spawn, but no-op if an overlay with this id is already open.
+    /// The duplicate check runs when the command applies (sequentially, against
+    /// `&mut World`), so it is race-free even when two systems both request the
+    /// same overlay in one frame — the first spawns, the second sees it open and
+    /// skips. Use this for opener buttons (a fast double-tap can't double-spawn).
+    pub fn push_unique(mut self) {
+        self.spec.unique = true;
+        self.commands.queue(self.spec);
+    }
 }
 
 /// The deferred spawn. Holds the spec; built against `&mut World` so it can read
@@ -125,13 +136,21 @@ struct SpawnOverlay {
     dismissable: bool,
     pop_on_escape: bool,
     content: Option<ContentFn>,
+    /// When set (via `push_unique`), skip the spawn if this id is already open.
+    unique: bool,
 }
 
 impl Command for SpawnOverlay {
     fn apply(self, world: &mut World) {
+        // Race-free dedup: by the time this command applies, any earlier
+        // same-frame spawn of the same id has already registered on the stack.
+        if self.unique && world.resource::<OverlayStack>().is_open(&self.id) {
+            return;
+        }
         let theme = world.resource::<Theme>().clone();
         let accent = self.accent.unwrap_or(theme.accent);
 
+        let id = self.id.clone();
         let root = world
             .spawn((
                 Overlay {
@@ -150,7 +169,7 @@ impl Command for SpawnOverlay {
                 },
             ))
             .id();
-        let depth = push_root(world, root);
+        let depth = push_root(world, root, &id);
         world
             .entity_mut(root)
             .insert(GlobalZIndex(Z_BASE + depth as i32 * Z_STEP));
@@ -158,11 +177,11 @@ impl Command for SpawnOverlay {
         let scrim = world.spawn(scrim_bundle(theme.scrim)).id();
         world.entity_mut(root).add_child(scrim);
         if self.dismissable {
-            world
-                .entity_mut(scrim)
-                .observe(move |_: On<Pointer<Click>>, mut commands: Commands| {
+            world.entity_mut(scrim).observe(
+                move |_: On<Pointer<Click>>, mut commands: Commands| {
                     commands.entity(root).despawn();
-                });
+                },
+            );
         }
 
         // Bespoke content owns the whole root; the built-in panel is skipped.
@@ -248,11 +267,11 @@ impl Command for SpawnOverlay {
                 .id();
             world.entity_mut(button).add_child(label);
             world.entity_mut(panel).add_child(button);
-            world
-                .entity_mut(button)
-                .observe(move |_: On<Pointer<Click>>, mut commands: Commands| {
+            world.entity_mut(button).observe(
+                move |_: On<Pointer<Click>>, mut commands: Commands| {
                     on_click(&mut commands);
-                });
+                },
+            );
         }
     }
 }

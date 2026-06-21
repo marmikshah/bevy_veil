@@ -43,13 +43,13 @@ mod theme;
 
 pub use build::{OverlayBuilder, overlay};
 pub use gate::{UiCapturing, ui_not_capturing};
-pub use stack::{Overlay, OverlayStack};
+pub use stack::{Overlay, OverlayCommandsExt, OverlayStack};
 pub use theme::Theme;
 
 pub mod prelude {
     pub use crate::{
-        Overlay, OverlayBuilder, OverlayStack, Theme, UiCapturing, VeilPlugin, overlay,
-        ui_not_capturing,
+        Overlay, OverlayBuilder, OverlayCommandsExt, OverlayStack, Theme, UiCapturing, VeilPlugin,
+        overlay, ui_not_capturing,
     };
 }
 
